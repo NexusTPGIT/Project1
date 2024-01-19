@@ -1,0 +1,113 @@
+#include <WiFi.h>
+#include <Wire.h>
+#include <DHT.h>  
+ 
+#define DHTPIN 4          //pin where the dht11 is connected
+DHT dht(DHTPIN, DHT11);
+ 
+String apiKey ="VP5N91AY2DIWLH24"; // Enter your Write API key from ThingSpeak
+const char* ssid = "AE master";     // replace with your wifi ssid and wpa2 key
+const char* pass = "98127645arjun";
+const char* server = "api.thingspeak.com";
+const char* host = "maker.ifttt.com" 
+ 
+
+int SensorPin = 32;
+long int soilMoistureValue = 0;
+long int soilmoisturepercent=0;
+int relaypin = 5;
+
+#define TRIGGER_PIN 13 // Define the trigger pin on the ESP32
+#define ECHO_PIN 12    // Define the echo pin on the ESP32
+
+WiFiClient client;
+ 
+ 
+void setup() {
+  Serial.begin(115200); // open serial port, set the baud rate to 9600 bps
+  pinMode(relaypin, OUTPUT);
+  
+  pinMode(TRIGGER_PIN, OUTPUT); // Set trigger pin as an output
+  pinMode(ECHO_PIN, INPUT);    // Set echo pin as an input
+  
+  dht.begin();
+  
+  WiFi.begin(ssid, pass);
+ 
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+    Serial.println("");
+    Serial.println("WiFi connected");
+    delay(4000);
+}  
+ 
+ 
+void loop() 
+{
+  long duration ,distance;
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  Serial.print("Humidity: ");
+  Serial.print(h,0);
+  Serial.println("%");
+  Serial.print("Temperature: ");
+  Serial.print(t,0);
+  Serial.println("%");
+  delay(100);
+  soilMoistureValue = analogRead(SensorPin);  //put Sensor insert into soil
+  Serial.println(soilMoistureValue);
+  soilmoisturepercent = map(soilMoistureValue,0,4092, 0, 100);
+  Serial.println("moisture percentage =" );
+  Serial.print(soilmoisturepercent);
+  // Clear the trigger pin
+  digitalWrite(TRIGGER_PIN, LOW);
+  delayMicroseconds(2);
+  
+  // Send a 10 microsecond pulse to the trigger pin
+  digitalWrite(TRIGGER_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIGGER_PIN, LOW);
+  
+  // Read the pulse duration from the echo pin
+  duration = pulseIn(ECHO_PIN, HIGH);
+  
+  // Calculate the distance based on the speed of sound
+  distance = (duration * 0.0343) / 2; // Speed of sound is approximately 343 meters per second
+  
+  // Print the distance measured (water level)
+  Serial.print("Water level: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+  
+  delay(1000); 
+  
+  if(soilmoisturepercent >=20 && distance <=7)
+  {
+    String url = "/tigger/motor/with/key/gokop3HlgpkRXqD67t0esSuCZPwbyGfkQqVAr5IsZgq";
+    client.print(String("GET") + url + "HTTP/1.1\r\n" + "Host:" + host +"\r\n" + "Connection:close\r\n\r\n");
+    delay(1000);
+    digitalWrite(relaypin, HIGH);
+    Serial.println("Motor is ON");
+    delay(10000);
+   Serial.println("-------------------");
+   
+  }else if (soilmoisturepercent <20 || distance >5)
+  {
+    digitalWrite(relaypin, LOW);
+    Serial.println("Motor is OFF");
+    delay(100);
+   Serial.println("-------------------");
+  }
+   
+  client.stop();
+  
+  if (client.connect(server, 80)) // "184.106.153.149" or api.thingspeak.com
+  {
+    client.println("GET https://api.thingspeak.com/update?api_key=VP5N91AY2DIWLH24&field1="+String(soilmoisturepercent) + "&field2=" + String(h) + "&field3=" + String(t) +"&field4=" + String(distance));
+  }
+  delay(15000);
+    client.stop();
+}
